@@ -336,3 +336,101 @@ This project is provided as-is for educational and business analysis purposes.
 ---
 
 **Note**: This framework is designed to be easily maintained and extended for ongoing business intelligence needs. The modular architecture ensures that updates to data sources or metric calculations can be made without affecting the overall analysis structure.
+
+---
+
+## Refactored Analysis v2
+
+`EDA_Refactored_v2.ipynb` is a second refactor of `EDA.ipynb`. It runs on its own modules and leaves `EDA_Refactored.ipynb`, `data_loader.py`, `business_metrics.py` and `dashboard.py` untouched, so the two versions can be compared.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `EDA_Refactored_v2.ipynb` | Configuration, charts, tables and generated summary of observations |
+| `data_loader_v2.py` | Loading, cleaning, joining and date filtering (no metrics) |
+| `business_metrics_v2.py` | Metric calculations only (no plotting or printing) |
+
+### Running it
+
+```bash
+pip install -r requirements.txt
+jupyter notebook EDA_Refactored_v2.ipynb
+```
+
+Run the notebook from this directory so that `ecommerce_data/` and the modules are found.
+
+### Configuring the analysis
+
+Edit the configuration cell in section 3 of the notebook:
+
+```python
+ANALYSIS_YEAR = 2023
+ANALYSIS_MONTH = None            # 1-12, or None for the full year
+COMPARISON_YEAR = 2022           # None disables comparisons
+START_DATE = None                # 'YYYY-MM-DD'; with END_DATE overrides year and month
+END_DATE = None
+COMPARISON_START_DATE = None
+COMPARISON_END_DATE = None
+ORDER_STATUS = 'delivered'       # None includes every status
+DELIVERY_BUCKET_EDGES = [3, 7]   # upper bounds in days; last bucket is open-ended
+TOP_N_CATEGORIES = None          # None shows all categories
+```
+
+When `ANALYSIS_MONTH` is set, the comparison uses the same month of `COMPARISON_YEAR`. Date ranges may span several years.
+
+### Using the modules directly
+
+```python
+import data_loader_v2 as dl
+import business_metrics_v2 as bm
+
+tables = dl.load_raw_tables('ecommerce_data/')
+sales = dl.build_sales_dataset(tables, status='delivered')   # all periods
+period = dl.filter_by_period(sales, '2023-04-01', '2023-06-30')
+
+bm.total_revenue(period)
+bm.revenue_by_category(period, top_n=5)
+bm.review_by_delivery_bucket(period, edges=[3, 7])
+```
+
+### Extending
+
+- New metric: add a function to `business_metrics_v2.py` that takes the filtered sales DataFrame and returns a value, Series or DataFrame; then call it and chart it in the notebook.
+- New source column: add it to the merge in `data_loader_v2.build_sales_dataset`.
+- Review and delivery metrics are calculated once per order, so multi-item orders are not counted repeatedly.
+
+### Differences from the original notebook
+
+- Average delivery time is calculated over all orders in the period (8.03 days for 2023). `EDA.ipynb` averaged only orders that have a review (8.01 days).
+- The monthly revenue chart overlays the comparison period as a second line.
+- Orders with several reviews use their mean review score.
+
+
+---
+
+## Streamlit Dashboard v2
+
+`dashboard_v2.py` turns the v2 analysis into an interactive dashboard. It uses `data_loader_v2.py` for the data and `business_metrics_v2.py` for every metric, and leaves the original `dashboard.py` untouched.
+
+```bash
+pip install -r requirements.txt
+streamlit run dashboard_v2.py
+```
+
+Run it from this directory so `ecommerce_data/` is found. Streamlit 1.51 or newer is required.
+
+### Layout
+
+- **Header**: title on the left; date range and month filters on the right. Both apply to the whole page. The dashboard opens on 2023.
+- **KPI row**: Total Revenue, Monthly Growth, Average Order Value, Total Orders. Revenue, average order value and orders show a trend against the previous period (green for an increase, red for a decrease, two decimals). Monthly Growth is the mean month-over-month revenue change inside the selection.
+- **Charts, 2x2**: revenue trend (solid line for the current period, dashed for the previous one); top 10 product categories; revenue by state map; average review score by delivery-time bucket (1-3, 4-7 and 8+ days). Bars use one distinct colour each; the state map uses a blue gradient.
+- **Bottom row**: average delivery time with a trend, and the average review score with stars.
+
+### Filters and the previous period
+
+- The date range selects orders by purchase date. The month filter then keeps only the chosen calendar months.
+- The previous period is the window of the same length that ends the day before the selected start date, with the same month filter. Full 2023 is compared with 2022; April 2023 (all of 2023 with only April ticked) is compared with April 2022.
+- Comparisons are shown only when the whole previous window lies inside the dates covered by the data. Otherwise the dashed line and the trend indicators are hidden.
+- Cards and charts with no data are omitted rather than shown empty. For example, selecting a single month removes the Monthly Growth card, because it needs at least two months.
+- Delivery buckets use the upper bounds in `DELIVERY_BUCKET_EDGES` at the top of `dashboard_v2.py`.
